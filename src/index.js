@@ -169,7 +169,7 @@ export function openDiffJournal(options = {}) {
       const targetPath = path.resolve(rootDir, file);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       if (snapshots) {
-        await writeSnapshotIfNeeded(targetPath, file, "materialize()");
+        await writeSnapshotIfNeeded(journalRoot, file, targetPath, "materialize()");
       }
       await fs.writeFile(targetPath, content, "utf8");
     },
@@ -195,7 +195,7 @@ export function openDiffJournal(options = {}) {
       const targetPath = path.resolve(rootDir, file);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       if (snapshots) {
-        await writeSnapshotIfNeeded(targetPath, file, "rollback()");
+        await writeSnapshotIfNeeded(journalRoot, file, targetPath, "rollback()");
       }
       await fs.writeFile(targetPath, content, "utf8");
     },
@@ -512,7 +512,7 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function writeSnapshotIfNeeded(targetPath, file, caller) {
+async function writeSnapshotIfNeeded(journalRoot, file, targetPath, caller) {
   let existingContent;
   try {
     existingContent = await fs.readFile(targetPath, "utf8");
@@ -526,8 +526,10 @@ async function writeSnapshotIfNeeded(targetPath, file, caller) {
   }
 
   const timestamp = new Date().toISOString().replace(/:/g, "-");
-  const snapshotPath = `${targetPath}.${timestamp}.bak`;
+  const snapshotDir = path.join(journalRoot, "snapshots", file);
+  const snapshotPath = path.join(snapshotDir, `${timestamp}.bak`);
   try {
+    await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
     await fs.writeFile(snapshotPath, existingContent, "utf8");
   } catch (err) {
     throw new CorruptedJournalError(
