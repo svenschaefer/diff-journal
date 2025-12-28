@@ -123,7 +123,7 @@ export function openDiffJournal(options = {}) {
       try {
         const diff = createPatch(file, before, after, "", "");
         const baseHash = createHash("sha256").update(before).digest("hex");
-        const seq = await nextSeq(fs, journalPath);
+        const seq = await nextSeq(journalPath);
         const entry = {
           seq,
           ts: new Date().toISOString(),
@@ -135,6 +135,7 @@ export function openDiffJournal(options = {}) {
         };
 
         await fs.appendFile(journalPath, `${JSON.stringify(entry)}\n`, "utf8");
+        await updateSeqCache(journalPath, seq);
       } catch (err) {
         appendError = err;
         throw err;
@@ -361,28 +362,16 @@ function parseJournalEntries(data, file, caller) {
   return entries;
 }
 
-async function nextSeq(fs, journalPath) {
-  try {
-    const data = await fs.readFile(journalPath, "utf8");
-    if (!data) {
-      return 1;
-    }
-
-    let count = 0;
-    for (let i = 0; i < data.length; i += 1) {
-      if (data[i] === "\n") {
-        count += 1;
-      }
-    }
-
-    return count + 1;
-  } catch (err) {
-    if (err && err.code === "ENOENT") {
-      return 1;
-    }
-
-    throw err;
+async function nextSeq(journalPath) {
+  const seqCachePath = `${journalPath}.seq`;
+  const cached = await readSeqCache(seqCachePath);
+  if (cached !== null) {
+    return cached + 1;
   }
+
+  const maxSeq = await computeMaxSeqFromJournal(journalPath);
+  await writeSeqCache(seqCachePath, maxSeq);
+  return maxSeq + 1;
 }
 
 async function acquireLock(lockPath, retries, delayMs, file, journalPath) {
@@ -472,5 +461,68 @@ async function writeSnapshotIfNeeded(targetPath, file, caller) {
     throw new CorruptedJournalError(
       `${caller}: failed to create snapshot for ${file} path ${snapshotPath}`
     );
+  }
+}
+
+async function readSeqCache(seqCachePath) {
+  try {
+    const data = await fs.readFile(seqCachePath, "utf8");
+    const value = data.trim();
+    if (!/^[0-9]+$/.test(value)) {
+      return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function writeSeqCache(seqCachePath, seq) {
+  try {
+    await fs.writeFile(seqCachePath, `${seq}\n`, "utf8");
+  } catch (err) {
+    return;
+  }
+}
+
+async function updateSeqCache(journalPath, seq) {
+  await writeSeqCache(`${journalPath}.seq`, seq);
+}
+
+async function computeMaxSeqFromJournal(journalPath) {
+  try {
+    const data = await fs.readFile(journalPath, "utf8");
+    if (!data) {
+      return 0;
+    }
+
+    const lines = data.split("\n");
+    let maxSeq = 0;
+    for (const line of lines) {
+      if (!line) {
+        continue;
+      }
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const seq = entry && entry.seq;
+      if (Number.isInteger(seq) && seq > maxSeq) {
+        maxSeq = seq;
+      }
+    }
+
+    return maxSeq;
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      return 0;
+    }
+    throw err;
   }
 }
