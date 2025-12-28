@@ -20,12 +20,12 @@ Items are grouped by priority.
 
 ### API ergonomics
 
-* [ ] Add `journal.inspect(file)` helper
+* [x] Add `journal.inspect(file)` helper
   * list entries
   * show seq range
   * basic metadata only (no patch apply)
 
-* [ ] Add `exists(file)` helper
+* [x] Add `exists(file)` helper
   * detect whether a journal exists for a file
 
 ---

@@ -198,6 +198,78 @@ export function openDiffJournal(options = {}) {
         await writeSnapshotIfNeeded(targetPath, file, "rollback()");
       }
       await fs.writeFile(targetPath, content, "utf8");
+    },
+
+    async exists(file) {
+      if (!file || typeof file !== "string") {
+        throw new InvalidInputError("exists(): file must be a non-empty string");
+      }
+
+      assertSafeFilePath(rootDir, journalRoot, file, "exists()");
+
+      const journalPath = path.join(journalRoot, `${file}.log`);
+      try {
+        await fs.access(journalPath);
+        return true;
+      } catch (err) {
+        if (err && err.code === "ENOENT") {
+          return false;
+        }
+        throw new CorruptedJournalError(
+          `exists(): failed to access journal for ${file}`
+        );
+      }
+    },
+
+    async inspect(file) {
+      if (!file || typeof file !== "string") {
+        throw new InvalidInputError("inspect(): file must be a non-empty string");
+      }
+
+      assertSafeFilePath(rootDir, journalRoot, file, "inspect()");
+
+      const journalPath = path.join(journalRoot, `${file}.log`);
+      let data;
+      try {
+        data = await fs.readFile(journalPath, "utf8");
+      } catch (err) {
+        if (err && err.code === "ENOENT") {
+          return { exists: false, count: 0, minSeq: null, maxSeq: null };
+        }
+        throw new CorruptedJournalError(
+          `inspect(): failed to read journal for ${file}`
+        );
+      }
+
+      const lines = data.split("\n");
+      let count = 0;
+      let minSeq = null;
+      let maxSeq = null;
+
+      for (const line of lines) {
+        if (!line) {
+          continue;
+        }
+        let entry;
+        try {
+          entry = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const seq = entry && entry.seq;
+        if (!Number.isInteger(seq) || seq <= 0) {
+          continue;
+        }
+        count += 1;
+        if (minSeq === null || seq < minSeq) {
+          minSeq = seq;
+        }
+        if (maxSeq === null || seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+
+      return { exists: true, count, minSeq, maxSeq };
     }
   };
 }
