@@ -34,7 +34,12 @@ class StrictReplayMismatchError extends Error {
 }
 
 export function openDiffJournal(options = {}) {
-  const { rootDir, journalDir = ".journal", strictReplay = false } = options;
+  const {
+    rootDir,
+    journalDir = ".journal",
+    strictReplay = false,
+    snapshots = false
+  } = options;
 
   if (!rootDir) {
     throw new InvalidInputError("openDiffJournal(): rootDir is required");
@@ -49,6 +54,12 @@ export function openDiffJournal(options = {}) {
   if (typeof strictReplay !== "boolean") {
     throw new InvalidInputError(
       "openDiffJournal(): strictReplay must be a boolean"
+    );
+  }
+
+  if (typeof snapshots !== "boolean") {
+    throw new InvalidInputError(
+      "openDiffJournal(): snapshots must be a boolean"
     );
   }
 
@@ -147,6 +158,8 @@ export function openDiffJournal(options = {}) {
 
       assertSafeFilePath(rootDir, journalRoot, file, "materialize()");
 
+      const journalPath = path.join(journalRoot, `${file}.log`);
+      await assertNoAppendLock("materialize()", file, journalPath);
       const entries = await readJournalEntries(journalRoot, file, "materialize()");
       const content = applyEntries(entries, file, "materialize()", Infinity, {
         strictReplay
@@ -154,6 +167,9 @@ export function openDiffJournal(options = {}) {
 
       const targetPath = path.resolve(rootDir, file);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      if (snapshots) {
+        await writeSnapshotIfNeeded(targetPath, file, "materialize()");
+      }
       await fs.writeFile(targetPath, content, "utf8");
     },
 
@@ -168,6 +184,8 @@ export function openDiffJournal(options = {}) {
 
       assertSafeFilePath(rootDir, journalRoot, file, "rollback()");
 
+      const journalPath = path.join(journalRoot, `${file}.log`);
+      await assertNoAppendLock("rollback()", file, journalPath);
       const entries = await readJournalEntries(journalRoot, file, "rollback()");
       const content = applyEntries(entries, file, "rollback()", seq, {
         strictReplay
@@ -175,6 +193,9 @@ export function openDiffJournal(options = {}) {
 
       const targetPath = path.resolve(rootDir, file);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      if (snapshots) {
+        await writeSnapshotIfNeeded(targetPath, file, "rollback()");
+      }
       await fs.writeFile(targetPath, content, "utf8");
     }
   };
@@ -388,6 +409,26 @@ async function acquireLock(lockPath, retries, delayMs, file, journalPath) {
   );
 }
 
+async function assertNoAppendLock(caller, file, journalPath) {
+  const lockPath = `${journalPath}.lock`;
+  try {
+    await fs.access(lockPath);
+    throw new CorruptedJournalError(
+      `${caller}: append in progress for ${file} journal ${journalPath} lock ${lockPath}`
+    );
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      return;
+    }
+    if (err instanceof CorruptedJournalError) {
+      throw err;
+    }
+    throw new CorruptedJournalError(
+      `${caller}: append in progress for ${file} journal ${journalPath} lock ${lockPath}`
+    );
+  }
+}
+
 async function releaseLock(lockHandle, lockPath) {
   try {
     if (lockHandle) {
@@ -408,4 +449,28 @@ async function releaseLock(lockHandle, lockPath) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function writeSnapshotIfNeeded(targetPath, file, caller) {
+  let existingContent;
+  try {
+    existingContent = await fs.readFile(targetPath, "utf8");
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      return;
+    }
+    throw new CorruptedJournalError(
+      `${caller}: failed to create snapshot for ${file} path ${targetPath}`
+    );
+  }
+
+  const timestamp = new Date().toISOString().replace(/:/g, "-");
+  const snapshotPath = `${targetPath}.${timestamp}.bak`;
+  try {
+    await fs.writeFile(snapshotPath, existingContent, "utf8");
+  } catch (err) {
+    throw new CorruptedJournalError(
+      `${caller}: failed to create snapshot for ${file} path ${snapshotPath}`
+    );
+  }
 }

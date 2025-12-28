@@ -27,9 +27,10 @@ Items are grouped by priority.
   * exclusive lock per journal file via lock file
   * deterministic retry and fail-fast semantics
 
-* [ ] Define behavior for concurrent `materialize()` / `rollback()`
-  * specify whether these operations may run concurrently with `append()`
-  * define read-vs-write guarantees and failure behavior
+* [x] Define behavior for concurrent `materialize()` / `rollback()`
+  * materialize / rollback fail fast if an append lock is active
+  * no waiting, retrying, or reader-side locking
+  * concurrent materialize/rollback calls are allowed
 
 ### Error semantics
 
@@ -46,20 +47,23 @@ Items are grouped by priority.
 
 ### Snapshots / checkpoints (timestamped backups)
 
-* [ ] Introduce optional snapshot (`.bak`) files
-  * full materialized content at a given `seq`
-  * used as replay starting point (optimization and safety)
-  * **timestamped naming** option: `x.txt.<timestamp>.bak`
+* [x] Introduce optional snapshot (`.bak`) files
+  * full materialized content at a given point in time
+  * created immediately before overwriting materialized files
+  * **timestamped naming**: `x.txt.<timestamp>.bak`
+  * snapshots written directly next to the materialized file
 
-* [ ] Define snapshot triggers (“write-through”)
-  * when writing materialized files (e.g. `materialize()` / `rollback()`), optionally create a snapshot first
-  * configurable snapshot policy (on materialize / rollback)
+* [x] Define snapshot triggers (“write-through”)
+  * snapshots created for `materialize()` and `rollback()`
+  * controlled by a boolean `snapshots` option
+  * no snapshots during `append()`
 
 * [ ] Define retention strategy
   * max count per file and/or max age
   * deletion policy must never affect journals
 
-* [ ] Ensure snapshots are **derived artifacts**, never authoritative
+* [x] Ensure snapshots are **derived artifacts**, never authoritative
+  * snapshots are never read, replayed, or consulted by the system
 
 ### Performance improvements
 
@@ -106,7 +110,7 @@ Items are grouped by priority.
 * [ ] Add “Journal Format” reference section
 * [ ] Add architecture diagram (conceptual)
 * [ ] Add “Storage Layout” section (rootDir vs journalDir; snapshot strategy)
-* [ ] Document concurrency semantics once finalized
+* [ ] Document snapshot and concurrency semantics
 
 ---
 
