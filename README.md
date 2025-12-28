@@ -1,17 +1,22 @@
 # diff-journal
 
-A lightweight Node.js library for append-only, diff-based journaling of file changes with deterministic replay and rollback.
+A lightweight Node.js library for **append-only, diff-based journaling** of file changes
+with **deterministic replay**, **rollback**, and **auditability**.
+
+---
 
 ## Motivation
 
-When file changes are produced automatically (e.g. by tools, pipelines, or AI systems), traditional version control alone is often not sufficient:
+When file changes are produced automatically (e.g. by tools, pipelines, or AI systems),
+traditional version control alone is often not sufficient:
 
 - changes should be **logged automatically**
 - every modification must be **auditable**
 - any previous state must be **reconstructable**
 - rollback must be **deterministic**, not heuristic
 
-`diff-journal` addresses this by introducing a **diff-based, append-only change journal per file**, without replacing native filesystem operations or Git.
+`diff-journal` addresses this by introducing a **diff-based, append-only change journal per file**,
+without replacing native filesystem operations or Git.
 
 ---
 
@@ -22,10 +27,12 @@ When file changes are produced automatically (e.g. by tools, pipelines, or AI sy
 For every tracked file, a corresponding journal is maintained:
 
 - the journal is **append-only**
-- each entry represents a **single change**
-- entries are ordered and immutable
+- each entry represents **one concrete change**
+- entries are **ordered, immutable, and auditable**
 
-The journal is the **source of truth**.
+The journal is the **single source of truth**.
+
+---
 
 ### Diff-based Changes
 
@@ -33,7 +40,9 @@ Changes are stored as **unified diffs**:
 
 - minimal, human-readable deltas
 - compatible with standard diff / patch tooling
-- replayable in strict sequence
+- replayed strictly in sequence order
+
+---
 
 ### Materialized Files
 
@@ -41,13 +50,34 @@ The actual file on disk is a **materialization** derived from the journal:
 
 - it can always be rebuilt from the journal
 - it may be snapshotted for performance or safety
-- it is never authoritative
+- it is **never authoritative**
+
+---
 
 ### Deterministic Replay & Rollback
 
-- replay = apply journal entries in order
+- replay = apply journal entries in strict order
 - rollback = replay up to a given sequence number
-- no undo logic, no heuristics
+- no undo logic, no heuristics, no best-effort behavior
+
+Failures are **fail-fast and explicit**.
+
+---
+
+## Design Principles
+
+`diff-journal` is built around the following principles:
+
+- **Correctness over performance**
+- **Auditability over convenience**
+- **Determinism over heuristics**
+- **Explicit behavior over hidden magic**
+
+All features preserve:
+
+- append-only semantics
+- deterministic replay
+- clear separation between journal and materialization
 
 ---
 
@@ -60,6 +90,9 @@ The actual file on disk is a **materialization** derived from the journal:
 - act as a version control system
 - manage branches or merges
 - integrate with Git automatically
+- run background watchers or daemons
+- maintain hidden state outside journal files  
+  (except explicitly derived artifacts like snapshots or caches)
 
 Git remains a **separate, higher-level concern**.
 
@@ -75,13 +108,14 @@ Git remains a **separate, higher-level concern**.
 
 ---
 
-## Status
+## Project Status
 
-This project is in an **early stage**.
+This project is currently in a **productive but evolving state**:
 
-- API is not yet stable
-- no guarantees on backward compatibility
-- feedback and iteration expected
+- core semantics are implemented and stable
+- APIs may still evolve
+- backward compatibility is not yet guaranteed
+- feedback and iteration are expected
 
 ---
 
