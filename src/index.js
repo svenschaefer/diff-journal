@@ -1,7 +1,7 @@
 // src/index.js
 
 import { createHash } from "node:crypto";
-import { createPatch } from "diff";
+import { applyPatch, createPatch } from "diff";
 
 export function openDiffJournal(options = {}) {
   const { rootDir } = options;
@@ -67,13 +67,109 @@ export function openDiffJournal(options = {}) {
     },
 
     async materialize(file) {
-      throw new Error("materialize() not implemented yet");
+      if (!file || typeof file !== "string") {
+        throw new Error("materialize(): 'file' must be a non-empty string");
+      }
+
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+
+      if (path.isAbsolute(file)) {
+        throw new Error("materialize(): 'file' must be a relative path");
+      }
+
+      const entries = await readJournalEntries(fs, path, rootDir, file);
+      const content = applyEntries(entries, file, "materialize()");
+
+      const targetPath = path.resolve(rootDir, file);
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.writeFile(targetPath, content, "utf8");
     },
 
     async rollback(file, { seq }) {
-      throw new Error("rollback() not implemented yet");
+      if (!file || typeof file !== "string") {
+        throw new Error("rollback(): 'file' must be a non-empty string");
+      }
+
+      if (!Number.isFinite(seq) || seq <= 0) {
+        throw new Error("rollback(): 'seq' must be a positive number");
+      }
+
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+
+      if (path.isAbsolute(file)) {
+        throw new Error("rollback(): 'file' must be a relative path");
+      }
+
+      const entries = await readJournalEntries(fs, path, rootDir, file);
+      const content = applyEntries(entries, file, "rollback()", seq);
+
+      const targetPath = path.resolve(rootDir, file);
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.writeFile(targetPath, content, "utf8");
     }
   };
+}
+
+async function readJournalEntries(fs, path, rootDir, file) {
+  const journalPath = path.resolve(rootDir, `${file}.log`);
+  let data = "";
+
+  try {
+    data = await fs.readFile(journalPath, "utf8");
+  } catch (err) {
+    if (err && err.code !== "ENOENT") {
+      throw err;
+    }
+  }
+
+  return parseJournalEntries(data);
+}
+
+function applyEntries(entries, file, caller, maxSeq = Infinity) {
+  const ordered = entries
+    .filter((entry) => entry.seq <= maxSeq)
+    .sort((a, b) => a.seq - b.seq);
+  let content = "";
+
+  for (const entry of ordered) {
+    const next = applyPatch(content, entry.diff);
+    if (next === false) {
+      throw new Error(
+        `${caller}: failed to apply patch for ${file} seq ${entry.seq}`
+      );
+    }
+    content = next;
+  }
+
+  return content;
+}
+
+function parseJournalEntries(data) {
+  if (!data) {
+    return [];
+  }
+
+  const lines = data.split("\n");
+  const entries = [];
+
+  for (const line of lines) {
+    if (!line) {
+      continue;
+    }
+
+    const entry = JSON.parse(line);
+    if (typeof entry.seq !== "number") {
+      throw new Error("materialize(): journal entry missing seq");
+    }
+    if (typeof entry.diff !== "string") {
+      throw new Error("materialize(): journal entry missing diff");
+    }
+    entries.push(entry);
+  }
+
+  return entries;
 }
 
 async function nextSeq(fs, journalPath) {
