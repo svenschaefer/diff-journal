@@ -2,6 +2,10 @@
   "name": "diff-journal",
   "version": "0.1.0",
   "description": "A lightweight Node.js library for append-only, diff-based journaling of file changes with deterministic replay and rollback.",
+  "author": {
+    "name": "Sven Schäfer",
+    "url": "https://github.com/svenschaefer"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,6 +27,12 @@
     "url": "https://github.com/svenschaefer/diff-journal/issues"
   },
   "homepage": "https://github.com/svenschaefer/diff-journal#readme",
+  "keywords": [
+    "diff",
+    "journal",
+    "append-only",
+    "audit"
+  ],
   "dependencies": {
     "diff": "^8.0.2"
   }
