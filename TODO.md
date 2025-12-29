@@ -1,13 +1,5 @@
 # TODO – diff-journal
 
-This document tracks **post-MVP / expansion** work items for the `diff-journal` project.  
-The core system is **complete, correct, and production-usable**.  
-All remaining items are **optional enhancements** and **non-blocking**.
-
-The focus going forward is on **operability, performance, and usability**, without
-compromising the established guarantees:
-append-only semantics, deterministic replay, and auditability.
-
 ---
 
 ## Expansion (optional, non-blocking)
@@ -15,35 +7,51 @@ append-only semantics, deterministic replay, and auditability.
 ### Snapshots / checkpoints
 
 * [ ] Define snapshot retention strategy
+
   * max snapshot count per file and/or max age
   * deletion policy must **never** affect journals
   * snapshot cleanup must be best-effort and failure-tolerant
+* [ ] Define snapshot/journal consistency rules
+
+  * behavior when snapshot exists but journal is truncated or partially corrupt
+  * snapshot must never mask journal corruption
+* [ ] Explicit snapshot format/version marker
 
 ---
 
-### Performance
+## Performance
 
 * [ ] Stream journal replay instead of loading full file into memory
+
   * line-by-line replay
   * preserve strict replay and ordering guarantees
   * no buffering-based reordering or heuristics
+* [ ] Early-abort on malformed entry during streaming replay
+
+  * deterministic failure position
+  * consistent behavior vs full-file replay
 
 ---
 
-### API ergonomics
-
-* [x] `journal.inspect(file)`
-  * list entry count
-  * min/max seq
-  * metadata only (no patch application)
-
-* [x] `journal.exists(file)`
-  * detect whether a journal exists for a file
+## API ergonomics
 
 * [ ] Optional structured inspect output
+
   * timestamps
   * actor / intent summaries
   * strictly read-only
+* [ ] Input validation hardening
+
+  * explicit type checks for all public API parameters
+  * fail fast with consistent `InvalidInputError`
+* [ ] Normalize journal line parsing
+
+  * tolerate trailing `\r` (CRLF)
+  * trim-only parsing without altering hashes
+* [ ] Consistent error mapping
+
+  * ensure fs / IO errors are mapped into journal-domain errors
+  * avoid leaking raw `fs` exceptions
 
 ---
 
@@ -52,13 +60,17 @@ append-only semantics, deterministic replay, and auditability.
 ### Tooling & UX
 
 * [ ] CLI wrapper
+
   * append
   * materialize
   * rollback
   * inspect
-
 * [ ] Pretty-print journal entries for humans
 * [ ] Optional JSON Schema for journal entries
+* [ ] Journal validation command
+
+  * structural validation (seq, hashes, ordering)
+  * no mutation, read-only
 
 ---
 
@@ -67,6 +79,40 @@ append-only semantics, deterministic replay, and auditability.
 * [ ] Hash chaining (`prev_hash`)
 * [ ] Tamper-evident journal mode
 * [ ] Signed journal entries (explicitly out of scope for v1)
+* [ ] Explicit handling of `base_hash` semantics
+
+  * defined behavior for missing / legacy entries
+  * strict vs permissive replay modes
+
+---
+
+### Concurrency & locking (non-blocking hardening)
+
+* [ ] Stale lock detection / recovery strategy
+
+  * age-based or PID-based heuristics
+  * never auto-delete without opt-in
+* [ ] Distinguish lock-present vs lock-inaccessible
+
+  * permission / IO errors must not masquerade as “append in progress”
+* [ ] Idempotent append semantics (optional)
+
+  * detect duplicate logical writes after partial failure
+
+---
+
+### Storage layout & robustness
+
+* [ ] Define behavior for missing / desynced `.seq` cache
+
+  * authoritative source (journal vs cache)
+  * recovery rules
+* [ ] Explicit handling when target path is a directory
+* [ ] Document filesystem assumptions
+
+  * supported characters
+  * atomicity expectations
+  * crash consistency model
 
 ---
 
@@ -77,6 +123,10 @@ append-only semantics, deterministic replay, and auditability.
 * [ ] Conceptual architecture diagram
 * [ ] “Storage Layout” section (rootDir vs journalDir; snapshots)
 * [ ] Document snapshot and concurrency semantics
+* [ ] Failure modes & guarantees section
+
+  * what is detected
+  * what is tolerated
+  * what intentionally hard-fails
 
 ---
-
